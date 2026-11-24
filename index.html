@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>จุดสแกนเข้าหอพัก - ครู</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            text-align: center;
+            padding: 20px;
+            margin: 0;
+            background: #1e272e;
+            color: white;
+        }
+        h2 { margin-top: 0; }
+        #reader {
+            max-width: 340px;
+            width: 100%;
+            margin: 16px auto;
+            background: #111;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 1px solid #35424d;
+            min-height: 240px;
+        }
+        button {
+            background: #0984e3;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 6px 4px;
+            font-size: 0.95em;
+        }
+        button:hover {
+            background: #74b9ff;
+            color: #1e272e;
+        }
+        #result {
+            font-size: 1.15em;
+            margin-top: 15px;
+            font-weight: bold;
+            min-height: 44px;
+            padding: 0 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>🚪 จุดสแกนบันทึกชื่อเข้าหอพัก</h2>
+    <div>
+        <button id="btn-start" onclick="startCamera()">📷 เปิดกล้องสแกน</button>
+        <button id="btn-stop" onclick="stopCamera()" style="background:#636e72;">⏹ ปิดกล้อง</button>
+    </div>
+    <div id="reader"></div>
+    <div id="result" style="color: #dcdde1;">กด "เปิดกล้องสแกน" เพื่อเริ่มใช้งาน</div>
+
+<script>
+    const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxm2ZUHgCfcBYrOk0BqNWsjftgvcEJAOyrsEypLm7XNQs2hmkAaWbyzPNj5sOknfyMNGQ/exec";
+
+    let qrScanner = null;
+    let isScanning = false;
+    let isProcessing = false;
+    const resultEl = document.getElementById("result");
+
+    function setResult(color, text) {
+        resultEl.style.color = color;
+        resultEl.innerText = text;
+    }
+
+    function onScanSuccess(decodedText) {
+        if (isProcessing) return;
+        isProcessing = true;
+
+        setResult("#f1c40f", "⏳ กำลังตรวจสอบรหัส...");
+
+        fetch(APPS_SCRIPT_URL, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({ decodedText: decodedText })
+        })
+        .then(function(response) {
+            if (!response.ok) {
+                throw new Error("HTTP " + response.status);
+            }
+            return response.json();
+        })
+        .then(function(res) {
+            if (res && res.status === "success") {
+                setResult("#2ecc71", "🟢 " + res.message);
+            } else {
+                setResult("#e74c3c", "🔴 " + ((res && res.message) || "เกิดข้อผิดพลาดไม่ทราบสาเหตุ"));
+            }
+        })
+        .catch(function(err) {
+            setResult("#e74c3c", "🔴 เชื่อมต่อระบบขัดข้อง: " + (err && err.message ? err.message : "ลองใหม่อีกครั้ง"));
+        })
+        .finally(function() {
+            setTimeout(function() {
+                isProcessing = false;
+            }, 1500);
+        });
+    }
+
+    async function startCamera() {
+        if (isScanning || typeof Html5Qrcode === "undefined") return;
+
+        try {
+            if (!qrScanner) {
+                qrScanner = new Html5Qrcode("reader");
+            }
+
+            const config = { fps: 10, qrbox: { width: 220, height: 220 } };
+
+            try {
+                await qrScanner.start({ facingMode: "environment" }, config, onScanSuccess);
+            } catch (e) {
+                const cameras = await Html5Qrcode.getCameras();
+                if (!cameras || cameras.length === 0) {
+                    throw new Error("ไม่พบกล้องบนอุปกรณ์นี้");
+                }
+                await qrScanner.start(cameras[0].id, config, onScanSuccess);
+            }
+
+            isScanning = true;
+            setResult("#dcdde1", "พร้อมรับการสแกน...");
+        } catch (err) {
+            setResult("#e74c3c", "🔴 เปิดกล้องไม่ได้: " + (err && err.message ? err.message : err));
+        }
+    }
+
+    async function stopCamera() {
+        if (!qrScanner || !isScanning) return;
+        try {
+            await qrScanner.stop();
+            isScanning = false;
+            setResult("#dcdde1", "ปิดกล้องแล้ว");
+        } catch (err) {
+            setResult("#e74c3c", "🔴 ปิดกล้องไม่สำเร็จ");
+        }
+    }
+</script>
+
+</body>
+</html>
